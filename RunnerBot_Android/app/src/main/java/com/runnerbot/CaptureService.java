@@ -64,6 +64,8 @@ public class CaptureService extends Service {
     private volatile int mode = IDLE;
     private final Brain brain = new Brain();
     private final Canon canon = new Canon();
+    private final ImageFrame frame = new ImageFrame();
+    private long locateStartNs;
     private Geometry geo;
     private final List<Geometry> found = new ArrayList<>();
     private int attempts;
@@ -171,6 +173,7 @@ public class CaptureService extends Service {
         log.append(String.format(Locale.US, "Runner Bot лог. screen=%dx%d capture=%dx%d shift=%.1f lat=%.3f glat=%.3f%n",
                 (int) Math.round(capW * toScreen), (int) Math.round(capH * toScreen), capW, capH, brain.shift, brain.lat, glat));
         armedNs = System.nanoTime();
+        locateStartNs = 0;
         mode = LOCATING;
         status("Ищу игру на экране…");
     }
@@ -197,7 +200,8 @@ public class CaptureService extends Service {
             int m = mode;
             if (m == IDLE) return;
             final double t = System.nanoTime() / 1e9;
-            ImageFrame fr = new ImageFrame(img);
+            frame.load(img);
+            ImageFrame fr = frame;
             if (m == LOCATING) { locate(img, fr, t); return; }
             long s0 = System.nanoTime();
             canon.fill(fr, geo);
@@ -223,13 +227,18 @@ public class CaptureService extends Service {
 
     private void locate(Image img, ImageFrame fr, double t) {
         long now = System.nanoTime();
-        if (now - lastAttemptNs < 60_000_000L) return;
+        if (locateStartNs == 0) locateStartNs = now;
+        if (now - lastAttemptNs < 40_000_000L) return;
         lastAttemptNs = now;
         attempts++;
+        long d0 = System.nanoTime();
         Geometry g = Geometry.detect(fr);
+        log.append(String.format(Locale.US, "поиск #%d: %s, %d мс, кадр %dx%d%n", attempts,
+                g == null ? "не найдено" : g.toString(), (System.nanoTime() - d0) / 1000000, fr.width(), fr.height()));
         if (g != null) found.add(g);
-        if (attempts < 14) return;
-        Geometry res = Geometry.consensus(found);
+        Geometry res = found.size() >= 4 ? Geometry.consensus(found) : null;
+        boolean timeout = (now - locateStartNs) > 10_000_000_000L || attempts >= 40;
+        if (res == null && !timeout) return;
         if (res == null) {
             log.append("Игра не найдена: удачных кадров ").append(found.size()).append(" из ").append(attempts).append('\n');
             snapshot(img, null, "runnerbot_not_found.png");

@@ -22,26 +22,31 @@ public final class Geometry {
         return (r * 299 + g * 587 + b * 114) / 1000;
     }
 
+    private static int[][] cache;
+    private static int cacheW;
+
     /** Один кадр -> геометрия или null. Работает с шагом по x = 1 (нужны точные края). */
     public static Geometry detect(Frame f) {
         final int H = f.height(), W = f.width();
         // серый кадр целиком
-        int[][] g = new int[H][];
+        if (cache == null || cache.length != H || cacheW != W) { cache = new int[H][]; cacheW = W; }
+        int[][] g = cache;
         int y0 = (int) (H * 0.3) - 6;
         if (y0 < 0) y0 = 0;
         for (int y = y0; y < H; y++) {
-            int[] row = new int[W];
+            int[] row = g[y] != null ? g[y] : (g[y] = new int[W]);
             for (int x = 0; x < W; x++) row[x] = gray(f.rgb(x, y));
             g[y] = row;
         }
         int minSpan = Math.max(200, (int) (W * 0.1));
         double bestScore = -1; int bY = 0, bL = 0, bR = 0;
+        boolean[] m = new boolean[W];
         for (int y = (int) (H * 0.3); y < H - 12; y++) {
             if (y - 25 < y0 || y + 5 >= H) continue;
             int[] row = g[y], upr = g[y - 5], dnr = g[y + 5];
             // подсчёт маски
             int cnt = 0;
-            boolean[] m = new boolean[W];
+            java.util.Arrays.fill(m, false);
             for (int x = 1; x < W; x++) {
                 int v = row[x];
                 boolean ok = (v - upr[x] > 15) && (v - dnr[x] > 8) && v > 30 && v < 200
