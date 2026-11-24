@@ -19,10 +19,15 @@ public final class Canon {
         final double s = geo.scale;
         final double step = 2.0 * s;                  // размер канонического пикселя в пикселях кадра
         final double y0 = Math.round(geo.gy - Brain.CROP_UP * s);
-        final int n = Math.max(2, Math.min(3, (int) Math.ceil(step)));
+        final int n = step < 1.6 ? 1 : 2;   // 1 или 2 точки на канонический пиксель по каждой оси (быстро)
         final int fw = f.width(), fh = f.height();
         for (int cy = 0; cy < H; cy++) {
             if (!inRows(cy)) continue;
+            // луч дрона длинный и тонкий: считаем каждую вторую строку, соседнюю копируем
+            if (cy >= Brain.BEAM_Y0 && cy < Brain.BEAM_Y1 && ((cy & 1) == 1)) {
+                System.arraycopy(flags, (cy - 1) * W, flags, cy * W, W);
+                continue;
+            }
             for (int cx = 0; cx < W; cx++) {
                 int sr = 0, sg = 0, sb = 0, cnt = 0;
                 for (int j = 0; j < n; j++) {
