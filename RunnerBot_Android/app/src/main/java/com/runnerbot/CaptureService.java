@@ -66,6 +66,8 @@ public class CaptureService extends Service {
     private final Canon canon = new Canon();
     private final ImageFrame frame = new ImageFrame();
     private long locateStartNs;
+    private volatile long callbacks, framesSeen;
+    private int armToken;
     private Geometry geo;
     private final List<Geometry> found = new ArrayList<>();
     private int attempts;
@@ -174,6 +176,23 @@ public class CaptureService extends Service {
                 (int) Math.round(capW * toScreen), (int) Math.round(capH * toScreen), capW, capH, brain.shift, brain.lat, glat));
         armedNs = System.nanoTime();
         locateStartNs = 0;
+        callbacks = 0;
+        framesSeen = 0;
+        final int token = ++armToken;
+        handler.postDelayed(() -> {
+            if (token == armToken && mode == LOCATING) {
+                log.append(String.format(Locale.US, "5 с поиска: вызовов=%d кадров=%d попыток=%d найдено=%d%n",
+                        callbacks, framesSeen, attempts, found.size()));
+            }
+        }, 5000);
+        handler.postDelayed(() -> {
+            if (token == armToken && mode == LOCATING) {
+                log.append(String.format(Locale.US, "12 с поиска: вызовов=%d кадров=%d попыток=%d найдено=%d%n",
+                        callbacks, framesSeen, attempts, found.size()));
+                disarm("поиск не завершился за 12 с (кадров получено: " + framesSeen + ")");
+                toast("Поиск игры завис (кадров получено: " + framesSeen + "). Лог сохранён.");
+            }
+        }, 12000);
         mode = LOCATING;
         status("Ищу игру на экране…");
     }
@@ -194,9 +213,11 @@ public class CaptureService extends Service {
     // ------------------------------------------------------------------ кадры
     private void onFrame(ImageReader r) {
         Image img = null;
+        callbacks++;
         try {
             img = r.acquireLatestImage();
             if (img == null) return;
+            framesSeen++;
             int m = mode;
             if (m == IDLE) return;
             final double t = System.nanoTime() / 1e9;
@@ -248,7 +269,6 @@ public class CaptureService extends Service {
         }
         geo = res;
         log.append("Геометрия: ").append(geo).append('\n');
-        snapshot(img, geo, "runnerbot_found.png");
         brain.reset();
         mode = RUNNING;
         status("Играю");

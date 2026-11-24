@@ -67,11 +67,11 @@ public class BotAccessibilityService extends AccessibilityService {
         lp.x = (int) (6 * d);
         lp.y = (int) (getResources().getDisplayMetrics().heightPixels * 0.78);
         btn.setOnTouchListener(new View.OnTouchListener() {
-            float sx, sy; int ox, oy; boolean moved;
+            float sx, sy; int ox, oy; boolean moved; long downAt;
             @Override public boolean onTouch(View v, MotionEvent e) {
                 switch (e.getAction()) {
                     case MotionEvent.ACTION_DOWN:
-                        sx = e.getRawX(); sy = e.getRawY(); ox = lp.x; oy = lp.y; moved = false;
+                        sx = e.getRawX(); sy = e.getRawY(); ox = lp.x; oy = lp.y; moved = false; downAt = System.currentTimeMillis();
                         return true;
                     case MotionEvent.ACTION_MOVE:
                         if (Math.abs(e.getRawX() - sx) > 12 || Math.abs(e.getRawY() - sy) > 12) moved = true;
@@ -82,7 +82,10 @@ public class BotAccessibilityService extends AccessibilityService {
                         }
                         return true;
                     case MotionEvent.ACTION_UP:
-                        if (!moved) onButton();
+                        if (!moved) {
+                            if (System.currentTimeMillis() - downAt > 700) shutdownAll();
+                            else onButton();
+                        }
                         return true;
                 }
                 return false;
@@ -104,6 +107,12 @@ public class BotAccessibilityService extends AccessibilityService {
         btn.setBackground(g);
     }
 
+    /** Долгое нажатие: выключить захват экрана и спрятать кнопку. */
+    private void shutdownAll() {
+        stopService(new android.content.Intent(this, CaptureService.class));
+        Toast.makeText(this, "Бот полностью выключен, кнопка спрятана", Toast.LENGTH_SHORT).show();
+    }
+
     private void onButton() {
         CaptureService cs = CaptureService.instance;
         if (cs == null) {
@@ -122,6 +131,7 @@ public class BotAccessibilityService extends AccessibilityService {
         s.btn.post(() -> {
             if (s.btn == null) return;
             CaptureService c = CaptureService.instance;
+            s.btn.setVisibility(c == null ? View.GONE : View.VISIBLE);
             boolean on = c != null && c.isRunningOrLocating();
             s.btn.setText(on ? "■" : "▶");
             s.setBg(c == null ? 0xFF757575 : on ? 0xFFC62828 : 0xFF2E7D32);
